@@ -1,5 +1,50 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
+from .modules.block import (
+    C1,
+    C2,
+    C2PSA,
+    C3,
+    C3TR,
+    CIB,
+    DFL,
+    ELAN1,
+    PSA,
+    SPP,
+    SPPELAN,
+    SPPF,
+    A2C2f,
+    AConv,
+    ADown,
+    Attention,
+    BNContrastiveHead,
+    Bottleneck,
+    BottleneckCSP,
+    C2f,
+    C2fAttn,
+    C2fCIB,
+    C2fPSA,
+    C2fMSA,  # 添加多尺度注意力模块
+    C3Ghost,
+    C3k2,
+    C3x,
+    CBFuse,
+    CBLinear,
+    ContrastiveHead,
+    GhostBottleneck,
+    HGBlock,
+    HGStem,
+    ImagePoolingAttn,
+    MultiScaleAttention,  # 添加多尺度注意力模块
+    Proto,
+    RepC3,
+    RepNCSPELAN4,
+    RepVGGDW,
+    ResNetLayer,
+    SCDown,
+    TorchVision,
+)
+
 from .tasks import (
     BaseModel,
     ClassificationModel,
@@ -26,4 +71,10 @@ __all__ = (
     "SegmentationModel",
     "ClassificationModel",
     "BaseModel",
+    # 添加block模块中的类
+    "C1", "C2", "C2PSA", "C3", "C3TR", "CIB", "DFL", "ELAN1", "PSA", "SPP", "SPPELAN", "SPPF",
+    "A2C2f", "AConv", "ADown", "Attention", "BNContrastiveHead", "Bottleneck", "BottleneckCSP",
+    "C2f", "C2fAttn", "C2fCIB", "C2fPSA", "C2fMSA", "C3Ghost", "C3k2", "C3x", "CBFuse", "CBLinear",
+    "ContrastiveHead", "GhostBottleneck", "HGBlock", "HGStem", "ImagePoolingAttn", "MultiScaleAttention",
+    "Proto", "RepC3", "RepNCSPELAN4", "RepVGGDW", "ResNetLayer", "SCDown", "TorchVision",
 )

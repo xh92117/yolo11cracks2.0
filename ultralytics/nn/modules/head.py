@@ -1,4 +1,4 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+# Ultralytics YOLO 🚀, AGPL-3.0 license
 """Model head modules."""
 
 import copy
@@ -19,20 +19,18 @@ __all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder", "v10D
 
 
 class Detect(nn.Module):
-    """YOLO Detect head for detection models."""
+    """YOLOv8 Detect head for detection models."""
 
     dynamic = False  # force grid reconstruction
     export = False  # export mode
-    format = None  # export format
     end2end = False  # end2end
     max_det = 300  # max_det
     shape = None
     anchors = torch.empty(0)  # init
     strides = torch.empty(0)  # init
-    legacy = False  # backward compatibility for v3/v5/v8/v9 models
 
     def __init__(self, nc=80, ch=()):
-        """Initialize the YOLO detection layer with specified number of classes and channels."""
+        """Initializes the YOLOv8 detection layer with specified number of classes and channels."""
         super().__init__()
         self.nc = nc  # number of classes
         self.nl = len(ch)  # number of detection layers
@@ -43,17 +41,13 @@ class Detect(nn.Module):
         self.cv2 = nn.ModuleList(
             nn.Sequential(Conv(x, c2, 3), Conv(c2, c2, 3), nn.Conv2d(c2, 4 * self.reg_max, 1)) for x in ch
         )
-        self.cv3 = (
-            nn.ModuleList(nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch)
-            if self.legacy
-            else nn.ModuleList(
-                nn.Sequential(
-                    nn.Sequential(DWConv(x, x, 3), Conv(x, c3, 1)),
-                    nn.Sequential(DWConv(c3, c3, 3), Conv(c3, c3, 1)),
-                    nn.Conv2d(c3, self.nc, 1),
-                )
-                for x in ch
+        self.cv3 = nn.ModuleList(
+            nn.Sequential(
+                nn.Sequential(DWConv(x, x, 3), Conv(x, c3, 1)),
+                nn.Sequential(DWConv(c3, c3, 3), Conv(c3, c3, 1)),
+                nn.Conv2d(c3, self.nc, 1),
             )
+            for x in ch
         )
         self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
 
@@ -84,12 +78,13 @@ class Detect(nn.Module):
             (dict, tensor): If not in training mode, returns a dictionary containing the outputs of both one2many and one2one detections.
                            If in training mode, returns a dictionary containing the outputs of one2many and one2one detections separately.
         """
-        x_detach = [xi.detach() for xi in x]
+        # x_detach = [xi.detach() for xi in x]
         one2one = [
-            torch.cat((self.one2one_cv2[i](x_detach[i]), self.one2one_cv3[i](x_detach[i])), 1) for i in range(self.nl)
+            torch.cat((self.one2one_cv2[i](x[i]), self.one2one_cv3[i](x[i])), 1) for i in range(self.nl)
         ]
-        for i in range(self.nl):
-            x[i] = torch.cat((self.cv2[i](x[i]), self.cv3[i](x[i])), 1)
+        if hasattr(self, 'cv2') and hasattr(self, 'cv3'):
+            for i in range(self.nl):
+                x[i] = torch.cat((self.cv2[i](x[i]), self.cv3[i](x[i])), 1)
         if self.training:  # Training path
             return {"one2many": x, "one2one": one2one}
 
@@ -102,7 +97,7 @@ class Detect(nn.Module):
         # Inference path
         shape = x[0].shape  # BCHW
         x_cat = torch.cat([xi.view(shape[0], self.no, -1) for xi in x], 2)
-        if self.format != "imx" and (self.dynamic or self.shape != shape):
+        if self.dynamic or self.shape != shape:
             self.anchors, self.strides = (x.transpose(0, 1) for x in make_anchors(x, self.stride, 0.5))
             self.shape = shape
 
@@ -120,11 +115,6 @@ class Detect(nn.Module):
             grid_size = torch.tensor([grid_w, grid_h, grid_w, grid_h], device=box.device).reshape(1, 4, 1)
             norm = self.strides / (self.stride[0] * grid_size)
             dbox = self.decode_bboxes(self.dfl(box) * norm, self.anchors.unsqueeze(0) * norm[:, :2])
-        elif self.export and self.format == "imx":
-            dbox = self.decode_bboxes(
-                self.dfl(box) * self.strides, self.anchors.unsqueeze(0) * self.strides, xywh=False
-            )
-            return dbox.transpose(1, 2), cls.sigmoid().permute(0, 2, 1)
         else:
             dbox = self.decode_bboxes(self.dfl(box), self.anchors.unsqueeze(0)) * self.strides
 
@@ -143,9 +133,9 @@ class Detect(nn.Module):
                 a[-1].bias.data[:] = 1.0  # box
                 b[-1].bias.data[: m.nc] = math.log(5 / m.nc / (640 / s) ** 2)  # cls (.01 objects, 80 classes, 640 img)
 
-    def decode_bboxes(self, bboxes, anchors, xywh=True):
+    def decode_bboxes(self, bboxes, anchors):
         """Decode bounding boxes."""
-        return dist2bbox(bboxes, anchors, xywh=xywh and (not self.end2end), dim=1)
+        return dist2bbox(bboxes, anchors, xywh=not self.end2end, dim=1)
 
     @staticmethod
     def postprocess(preds: torch.Tensor, max_det: int, nc: int = 80):
@@ -173,7 +163,7 @@ class Detect(nn.Module):
 
 
 class Segment(Detect):
-    """YOLO Segment head for segmentation models."""
+    """YOLOv8 Segment head for segmentation models."""
 
     def __init__(self, nc=80, nm=32, npr=256, ch=()):
         """Initialize the YOLO model attributes such as the number of masks, prototypes, and the convolution layers."""
@@ -198,7 +188,7 @@ class Segment(Detect):
 
 
 class OBB(Detect):
-    """YOLO OBB detection head for detection with rotation models."""
+    """YOLOv8 OBB detection head for detection with rotation models."""
 
     def __init__(self, nc=80, ne=1, ch=()):
         """Initialize OBB with number of classes `nc` and layer channels `ch`."""
@@ -228,7 +218,7 @@ class OBB(Detect):
 
 
 class Pose(Detect):
-    """YOLO Pose head for keypoints models."""
+    """YOLOv8 Pose head for keypoints models."""
 
     def __init__(self, nc=80, kpt_shape=(17, 3), ch=()):
         """Initialize YOLO network with default parameters and Convolutional Layers."""
@@ -252,40 +242,26 @@ class Pose(Detect):
     def kpts_decode(self, bs, kpts):
         """Decodes keypoints."""
         ndim = self.kpt_shape[1]
-        if self.export:
-            if self.format in {
-                "tflite",
-                "edgetpu",
-            }:  # required for TFLite export to avoid 'PLACEHOLDER_FOR_GREATER_OP_CODES' bug
-                # Precompute normalization factor to increase numerical stability
-                y = kpts.view(bs, *self.kpt_shape, -1)
-                grid_h, grid_w = self.shape[2], self.shape[3]
-                grid_size = torch.tensor([grid_w, grid_h], device=y.device).reshape(1, 2, 1)
-                norm = self.strides / (self.stride[0] * grid_size)
-                a = (y[:, :, :2] * 2.0 + (self.anchors - 0.5)) * norm
-            else:
-                # NCNN fix
-                y = kpts.view(bs, *self.kpt_shape, -1)
-                a = (y[:, :, :2] * 2.0 + (self.anchors - 0.5)) * self.strides
+        if self.export:  # required for TFLite export to avoid 'PLACEHOLDER_FOR_GREATER_OP_CODES' bug
+            y = kpts.view(bs, *self.kpt_shape, -1)
+            a = (y[:, :, :2] * 2.0 + (self.anchors - 0.5)) * self.strides
             if ndim == 3:
                 a = torch.cat((a, y[:, :, 2:3].sigmoid()), 2)
             return a.view(bs, self.nk, -1)
         else:
             y = kpts.clone()
             if ndim == 3:
-                y[:, 2::ndim] = y[:, 2::ndim].sigmoid()  # sigmoid (WARNING: inplace .sigmoid_() Apple MPS bug)
+                y[:, 2::3] = y[:, 2::3].sigmoid()  # sigmoid (WARNING: inplace .sigmoid_() Apple MPS bug)
             y[:, 0::ndim] = (y[:, 0::ndim] * 2.0 + (self.anchors[0] - 0.5)) * self.strides
             y[:, 1::ndim] = (y[:, 1::ndim] * 2.0 + (self.anchors[1] - 0.5)) * self.strides
             return y
 
 
 class Classify(nn.Module):
-    """YOLO classification head, i.e. x(b,c1,20,20) to x(b,c2)."""
-
-    export = False  # export mode
+    """YOLOv8 classification head, i.e. x(b,c1,20,20) to x(b,c2)."""
 
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1):
-        """Initializes YOLO classification head to transform input tensor from (b,c1,20,20) to (b,c2) shape."""
+        """Initializes YOLOv8 classification head to transform input tensor from (b,c1,20,20) to (b,c2) shape."""
         super().__init__()
         c_ = 1280  # efficientnet_b0 size
         self.conv = Conv(c1, c_, k, s, p, g)
@@ -298,17 +274,14 @@ class Classify(nn.Module):
         if isinstance(x, list):
             x = torch.cat(x, 1)
         x = self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
-        if self.training:
-            return x
-        y = x.softmax(1)  # get final output
-        return y if self.export else (y, x)
+        return x if self.training else x.softmax(1)
 
 
 class WorldDetect(Detect):
-    """Head for integrating YOLO detection models with semantic understanding from text embeddings."""
+    """Head for integrating YOLOv8 detection models with semantic understanding from text embeddings."""
 
     def __init__(self, nc=80, embed=512, with_bn=False, ch=()):
-        """Initialize YOLO detection layer with nc classes and layer channels ch."""
+        """Initialize YOLOv8 detection layer with nc classes and layer channels ch."""
         super().__init__(nc, ch)
         c3 = max(ch[0], min(self.nc, 100))
         self.cv3 = nn.ModuleList(nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, embed, 1)) for x in ch)
@@ -400,7 +373,7 @@ class RTDETRDecoder(nn.Module):
             nh (int): Number of heads in multi-head attention. Default is 8.
             ndl (int): Number of decoder layers. Default is 6.
             d_ffn (int): Dimension of the feed-forward networks. Default is 1024.
-            dropout (float): Dropout rate. Default is 0.0.
+            dropout (float): Dropout rate. Default is 0.
             act (nn.Module): Activation function. Default is nn.ReLU.
             eval_idx (int): Evaluation index. Default is -1.
             nd (int): Number of denoising. Default is 100.
@@ -563,6 +536,7 @@ class RTDETRDecoder(nn.Module):
 
         return embeddings, refer_bbox, enc_bboxes, enc_scores
 
+    # TODO
     def _reset_parameters(self):
         """Initializes or resets the parameters of the model's various components with predefined weights and biases."""
         # Class and bbox head init
@@ -622,3 +596,6 @@ class v10Detect(Detect):
             for x in ch
         )
         self.one2one_cv3 = copy.deepcopy(self.cv3)
+
+    def switch_to_deploy(self):
+        del self.cv2, self.cv3

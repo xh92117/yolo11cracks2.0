@@ -2294,14 +2294,6 @@ def v8_transforms(dataset, imgsz, hyp, stretch=False):
 
     Returns:
         (Compose): A composition of image transformations to be applied to the dataset.
-
-    Examples:
-        >>> from ultralytics.data.dataset import YOLODataset
-        >>> from ultralytics.utils import IterableSimpleNamespace
-        >>> dataset = YOLODataset(img_path="path/to/images", imgsz=640)
-        >>> hyp = IterableSimpleNamespace(mosaic=1.0, copy_paste=0.5, degrees=10.0, translate=0.2, scale=0.9)
-        >>> transforms = v8_transforms(dataset, imgsz=640, hyp=hyp)
-        >>> augmented_data = transforms(dataset[0])
     """
     mosaic = Mosaic(dataset, imgsz=imgsz, p=hyp.mosaic)
     affine = RandomPerspective(
@@ -2334,28 +2326,22 @@ def v8_transforms(dataset, imgsz, hyp, stretch=False):
         elif flip_idx and (len(flip_idx) != kpt_shape[0]):
             raise ValueError(f"data.yaml flip_idx={flip_idx} length must be equal to kpt_shape[0]={kpt_shape[0]}")
 
-    # 添加自定义图像增强算法
-    custom_aug_params = getattr(hyp, 'custom_aug', {})
-    custom_aug = CustomAugment(
-        p=custom_aug_params.get('p', 0.5),
-        black_thresh=custom_aug_params.get('black_thresh', 0.05),
-        white_thresh=custom_aug_params.get('white_thresh', 0.1),
-        enhance_intensity=custom_aug_params.get('enhance_intensity', 0.4),
-        smooth_sigma=custom_aug_params.get('smooth_sigma', 5)
-    )
+    # 构建基础转换列表
+    transforms = [
+        pre_transform,
+        MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
+        Albumentations(p=1.0),
+        RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
+        RandomFlip(direction="vertical", p=hyp.flipud),
+        RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
+    ]
+    
+    # 如果配置了自定义增强，添加到转换列表中
+    if hasattr(hyp, 'custom_aug') and hyp.custom_aug:
+        custom_aug = CustomAugment(**hyp.custom_aug)
+        transforms.append(custom_aug)
 
-    return Compose(
-        [
-            pre_transform,
-            MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
-            Albumentations(p=1.0),
-            # 添加自定义增强到流程中
-            custom_aug,
-            RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
-            RandomFlip(direction="vertical", p=hyp.flipud),
-            RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
-        ]
-    )  # transforms
+    return Compose(transforms)  # transforms
 
 
 # Classification augmentations -----------------------------------------------------------------------------------------
